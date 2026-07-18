@@ -75,9 +75,10 @@
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
   .modebtn.active{border-color:var(--cyan); background:#0e2f45; box-shadow:inset 0 2px 0 var(--cyan);}
   .modebtn.active .bs{color:var(--cyan);}
-  .chatrow{display:flex; gap:6px; align-items:stretch;}
+  .chatrow{display:flex; gap:6px; align-items:stretch; height:38px;}
   #chatbox{flex:1; background:var(--card2); color:var(--ink); border:1px solid var(--line);
-    padding:7px 10px; font-family:inherit; font-size:12px; resize:none; min-height:36px; height:36px;}
+    padding:9px 10px; font-family:inherit; font-size:12px; resize:none; height:100%; min-height:0;}
+  #chatsend{display:flex; align-items:center; justify-content:center; height:100%;}
   #chatout{display:none; border:1px solid var(--line); border-left:2px solid var(--teal);
     padding:8px 12px; font-size:11.5px; color:var(--ink2); white-space:pre-wrap;
     max-height:110px; overflow-y:auto; background:var(--card2);}
@@ -182,8 +183,8 @@
       <div class="wb-row"><div class="wb-lbl">Prompt</div>
         <div style="min-width:0;">
           <div class="chatrow">
-            <textarea id="chatbox" placeholder="Paste your own prompt — send twice to see caching…"></textarea>
-            <button id="chatsend" style="min-width:84px;"><span class="bt">Send ➤</span><span class="bs">256 tok</span></button>
+            <textarea id="chatbox" placeholder="Paste your own prompt (256-token reply) — send twice to see caching…"></textarea>
+            <button id="chatsend" style="min-width:84px;"><span class="bt">Send ➤</span></button>
           </div>
           <div id="chatout" style="margin-top:6px;"></div>
         </div>
