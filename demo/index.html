@@ -1,0 +1,585 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KV cache tiering — live TTFT demo</title>
+<style>
+  :root{
+    --ground:#0a1628; --card:#101f38; --card2:#162a4a; --line:#1e3355;
+    --cyan:#00d4ff; --teal:#00a3cc; --ink:#fff; --ink2:#b8c5d4; --ink3:#7e8fa4;
+    --amber:#ffb454; --green:#4ade80; --red:#f87171;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0; background:var(--ground); color:var(--ink);
+    font-family:"Segoe UI",-apple-system,"Helvetica Neue",Arial,sans-serif; line-height:1.5;}
+  .wrap{max-width:1160px; margin:0 auto; padding:28px 24px 60px;}
+  .eyebrow{font-size:11px; letter-spacing:.2em; text-transform:uppercase; color:var(--cyan); font-weight:700;}
+  h1{font-size:25px; margin:6px 0 2px; font-weight:800;}
+  .sub{color:var(--ink2); margin:0; font-size:13.5px;}
+  .sechead{font-size:11px; letter-spacing:.18em; text-transform:uppercase; color:var(--ink3);
+    font-weight:700; margin:26px 0 8px; display:flex; align-items:center; gap:10px;}
+  .sechead .hint{letter-spacing:0; text-transform:none; font-weight:400; color:var(--ink3); font-size:11.5px;}
+  .sechead .cy{color:var(--cyan);}
+  /* unified cards */
+  .card{background:var(--card); border:1px solid var(--line); padding:12px 16px;}
+  /* grids */
+  .grid2{display:grid; grid-template-columns:repeat(2,1fr); gap:10px;}
+  .grid3{display:grid; grid-template-columns:repeat(3,1fr); gap:10px;}
+  .grid4{display:grid; grid-template-columns:repeat(4,1fr); gap:10px;}
+  .grid6{display:grid; grid-template-columns:repeat(6,1fr); gap:10px;}
+  @media (max-width:900px){ .grid6{grid-template-columns:repeat(3,1fr);} .grid4{grid-template-columns:repeat(2,1fr);} }
+  /* resource + tier cards */
+  .rescard{display:flex; flex-direction:column; min-height:108px;}
+  .rescard .rk{font-size:10px; letter-spacing:.16em; text-transform:uppercase; color:var(--ink3); font-weight:700;}
+  .rescard .rv{font-size:16px; font-weight:700; font-variant-numeric:tabular-nums; margin:4px 0 2px;}
+  .rescard .rd{font-size:11px; color:var(--ink3); margin-bottom:10px;}
+  .rescard .bar{margin-top:auto; height:7px; background:var(--card2); border:1px solid var(--line);}
+  .rescard .bar > div{height:100%; background:var(--teal); width:0; transition:width .6s;}
+  .tierrow{display:grid; grid-template-columns:1fr 26px 1fr 26px 1fr; gap:0; align-items:stretch;}
+  .tierarrow{display:flex; align-items:center; justify-content:center; color:var(--cyan); font-weight:800;}
+  .tiercard{cursor:pointer;}
+  .tiercard:hover{border-color:var(--cyan);}
+  .tiercard .rk{color:var(--cyan);}
+  .tiercard.dim{opacity:.45; cursor:default;}
+  .tiercard.dim:hover{border-color:var(--line);}
+  /* buttons */
+  button{background:var(--card); color:var(--ink); border:1px solid var(--line);
+    padding:11px 10px; font-size:13.5px; cursor:pointer; font-family:inherit;
+    transition:border-color .15s; text-align:center;}
+  button:hover:not(:disabled){border-color:var(--cyan);}
+  button:disabled{opacity:.45; cursor:not-allowed;}
+  button .bt{font-weight:700; display:block;}
+  button .bs{font-weight:400; font-size:10.5px; color:var(--ink3); display:block; margin-top:2px;}
+  .modebtn.active{border-color:var(--cyan); background:var(--card2); box-shadow:inset 0 2px 0 var(--cyan);}
+  .modebtn.active .bs{color:var(--cyan);}
+  /* status pill */
+  #status{display:inline-flex; align-items:center; gap:8px; font-size:12.5px; color:var(--ink2);
+    background:var(--card); border:1px solid var(--line); padding:6px 12px; white-space:nowrap;}
+  .dot{width:9px; height:9px; border-radius:50%; background:var(--ink3); flex:none;}
+  .dot.ok{background:var(--green);} .dot.busy{background:var(--amber); animation:pulse 1s infinite;}
+  .dot.down{background:var(--red);}
+  @keyframes pulse{50%{opacity:.35;}}
+  /* evidence terminal */
+  #evidence{display:none; margin-top:10px; background:#050d1c; border:1px solid var(--cyan); padding:0;}
+  #evhead{display:flex; justify-content:space-between; align-items:center; padding:8px 14px;
+    border-bottom:1px solid var(--line); font-size:11px; letter-spacing:.14em; text-transform:uppercase;
+    color:var(--cyan); font-weight:700;}
+  #evhead button{padding:2px 10px; font-size:11px;}
+  #evbody{padding:12px 16px; font-family:"SF Mono",Consolas,Menlo,monospace; font-size:11.5px;
+    line-height:1.6; white-space:pre-wrap; word-break:break-all; color:var(--ink2); max-height:340px; overflow-y:auto;}
+  #evbody .cmd{color:var(--green);}
+  /* details */
+  details{background:var(--card); border:1px solid var(--line); padding:10px 16px; margin-top:10px; font-size:12.5px; color:var(--ink2);}
+  details summary{cursor:pointer; font-weight:600; color:var(--ink); font-size:12.5px;}
+  details p{margin:8px 0 2px; max-width:100ch;}
+  /* clock */
+  .clockcard{border-top:2px solid var(--cyan); display:flex; gap:36px; align-items:center; flex-wrap:wrap; padding:20px 22px;}
+  #clock{font-size:56px; font-weight:800; font-variant-numeric:tabular-nums;
+    font-family:"SF Mono",Consolas,Menlo,monospace; min-width:300px; letter-spacing:-1px;}
+  #clock small{font-size:24px; color:var(--ink3); font-weight:600;}
+  #clock.running{color:var(--amber);} #clock.done{color:var(--cyan);}
+  .clockmeta{font-size:13px; color:var(--ink2); flex:1; min-width:280px;} .clockmeta b{color:var(--ink);}
+  .clockmeta .ans{color:var(--ink3); font-style:italic; display:block; margin-top:6px; font-size:12px;}
+  /* chat */
+  .chatrow{display:flex; gap:10px; align-items:stretch;}
+  #chatbox{flex:1; background:var(--card); color:var(--ink); border:1px solid var(--line);
+    padding:12px; font-family:inherit; font-size:13.5px; resize:vertical; min-height:64px;}
+  #chatout{display:none; border-left:2px solid var(--teal); padding:14px 16px; margin-top:10px;
+    font-size:13.5px; color:var(--ink2); white-space:pre-wrap;}
+  /* log table */
+  table{border-collapse:collapse; width:100%; font-size:12.5px;}
+  th{font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink3); text-align:left; font-weight:700;}
+  th,td{padding:7px 12px; border-bottom:1px solid var(--line); font-variant-numeric:tabular-nums;}
+  td{color:var(--ink2);}
+  td .bar{display:inline-block; height:9px; background:var(--teal); vertical-align:middle; margin-right:8px;}
+  td.fast .bar{background:var(--cyan);}
+  .mode-pill{font-size:10.5px; padding:2px 8px; border:1px solid var(--line); color:var(--ink2);}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:18px; flex-wrap:wrap;">
+    <div>
+      <div class="eyebrow">vLLM + LMCache + NVIDIA NIXL · live on 1x A100 80GB</div>
+      <h1>KV cache tiering — click to measure TTFT</h1>
+      <p class="sub">Load documents, clear tiers, and watch which tier answers — every number is measured on the GPU server.</p>
+    </div>
+    <span id="status"><span class="dot" id="statusdot"></span><span id="statustext">connecting…</span></span>
+  </div>
+
+  <div class="sechead">Host resources</div>
+  <div class="grid3">
+    <div class="card rescard"><div class="rk">GPU HBM (A100)</div><div class="rv" id="r-gpu">…</div>
+      <div class="rd">model weights + tier 0 live here</div><div class="bar"><div id="b-gpu"></div></div></div>
+    <div class="card rescard"><div class="rk">Host RAM</div><div class="rv" id="r-ram">…</div>
+      <div class="rd" id="r-ramsplit">…</div><div class="bar"><div id="b-ram"></div></div></div>
+    <div class="card rescard"><div class="rk">NVMe disk</div><div class="rv" id="r-disk">…</div>
+      <div class="rd">KV file tiers live here</div><div class="bar"><div id="b-disk"></div></div></div>
+  </div>
+
+  <div class="sechead">KV cache tiers <span class="cy" id="tiermode"></span>
+    <span class="hint">— click a tier card for live evidence from the server</span></div>
+  <div class="tierrow" id="tiers"></div>
+  <div id="evidence">
+    <div id="evhead"><span id="evtitle">evidence</span><button onclick="document.getElementById('evidence').style.display='none'">close ✕</button></div>
+    <div id="evbody">…</div>
+  </div>
+
+  <div class="sechead">1 · Serving mode <span class="hint">(switching restarts vLLM — takes 2–3 min and resets every tier)</span></div>
+  <div class="grid2" id="modes">
+    <button class="modebtn" data-mode="baseline"><span class="bt">Baseline vLLM</span>
+      <span class="bs">GPU 47 GB only — nothing catches evictions</span></button>
+    <button class="modebtn" data-mode="full"><span class="bt">Full hierarchy (recommended)</span>
+      <span class="bs">GPU 47 GB → CPU RAM 60 GB → NIXL/NVMe 85.6 GB</span></button>
+  </div>
+  <details>
+    <summary>Tier caps &amp; how the hierarchy works</summary>
+    <p><b>Caps (all deliberate, nothing hidden):</b> GPU 47 GB is hardware truth (80 GB − 28 GB weights, ~23 docs).
+    CPU tier: 60 GB pinned host RAM by config (~30 docs). NIXL pool: 1,700 slots × 48 MiB/chunk (256 tok × 192 KiB) = 85.6 GB on NVMe (~41 docs).
+    A pyramid — each tier bigger than the one above.</p>
+    <p>Every doc is ~10k tokens (~30 pages) costing <b>~2 GB of KV</b> (0.19 MB/token). KV is written through to
+    all tiers; a full tier LRU-evicts its oldest while lower tiers still hold them. Docs A–E are docs 1–5 of set 1.
+    <b>TTFT decoder:</b> ~1.8s cold prefill · ~0.07s GPU · ~0.17s CPU RAM · ~0.35s NIXL/NVMe.</p>
+  </details>
+  <details>
+    <summary>Suggested experiment (you drive every step)</summary>
+    <p>① Sweep docs 1–10 — cold, ~1.8s each; every tier gauge fills by 20 GB.
+    ② Sweep 1–10 again — all GPU hits, ~0.07s.
+    ③ Sweep 11–20, 21–30, 31–40 — 80 GB floods the pyramid; GPU pins at 100%, then CPU.
+    ④ Sweep 1–10 again — GPU evicted them long ago, but a lower tier still has them: fast, no prefill.
+    ⑤ Clear CPU tier → sweep 11–20 — served from NIXL/NVMe (~0.35s), still no prefill.
+    ⑥ Clear all three tiers → any sweep = full recompute. That's baseline life, permanently.</p>
+  </details>
+  <details>
+    <summary>How the tier evidence works (what runs when you click a tier card)</summary>
+    <p>Every click re-runs real commands on the GPU server and shows their raw output — nothing is cached
+    or simulated, and nothing is modified (all commands are read-only). The panel opens with the dashboard's
+    own gauge value so you can compare it against the system's answer below.</p>
+    <p><b>GPU tier:</b> <code>nvidia-smi</code>, the vLLM log line stating the KV budget, and vLLM's live
+    cache metrics. <b>CPU RAM and NIXL tiers:</b> a small audit script (<code>evidence_lookup.py</code>) that,
+    for each of the 40 demo docs, ① rebuilds the doc's exact prompt, ② tokenizes it through vLLM's
+    <code>/tokenize</code> with the chat template applied (the cache is keyed on the templated token
+    sequence — raw text tokens never match), and ③ asks the LMCache controller's <code>/lookup</code> API which
+    tier holds those tokens. The per-doc rows and GB totals come from <b>LMCache's own index</b>, not from this
+    dashboard — when they match the gauge, that's two independent sources agreeing.</p>
+    <p><b>Fine print:</b> the audit covers the 40 demo docs (cold-prefill and chat prompts aren't in the
+    corpus, so they can't be looked up); <code>/lookup</code> names each doc's <i>fastest</i> tier — a doc in
+    CPU RAM usually also has a copy in the NIXL pool below. <b>Known blind spot:</b> in LMCache 0.5.1 the
+    NIXL backend never reports to the controller registry, so docs held <i>only</i> in the pool are invisible
+    to the audit (after a CPU clear it reads empty while the pool still serves — prove it by clearing GPU+CPU
+    and asking a swept doc: ~0.35s and a "Retrieved" log line). The storage gauge models true pool membership. Two deployment requirements made this work, both
+    relevant in production: lookups must use chat-template tokens, and every LMCache process (engine +
+    controller) must run with the same <code>PYTHONHASHSEED</code> or the index keys never match.</p>
+  </details>
+
+  <div class="sechead">2 · Load requests <span class="hint">— single docs, or one manual 10-doc pass per sweep click</span></div>
+  <div class="grid6">
+    <button class="askbtn" data-doc="cold"><span class="bt">❄ Cold prefill</span><span class="bs">always-new doc · 2 GB</span></button>
+    <button class="askbtn" data-doc="0"><span class="bt">Doc A</span><span class="bs">~10k tok · 2 GB</span></button>
+    <button class="askbtn" data-doc="1"><span class="bt">Doc B</span><span class="bs">~10k tok · 2 GB</span></button>
+    <button class="askbtn" data-doc="2"><span class="bt">Doc C</span><span class="bs">~10k tok · 2 GB</span></button>
+    <button class="askbtn" data-doc="3"><span class="bt">Doc D</span><span class="bs">~10k tok · 2 GB</span></button>
+    <button class="askbtn" data-doc="4"><span class="bt">Doc E</span><span class="bs">~10k tok · 2 GB</span></button>
+  </div>
+  <div class="grid4" style="margin-top:10px;">
+    <button class="askbtn sweepbtn" data-set="0"><span class="bt">Sweep docs 1–10</span><span class="bs">one pass · 20 GB · ~30s</span></button>
+    <button class="askbtn sweepbtn" data-set="1"><span class="bt">Sweep docs 11–20</span><span class="bs">one pass · 20 GB · ~30s</span></button>
+    <button class="askbtn sweepbtn" data-set="2"><span class="bt">Sweep docs 21–30</span><span class="bs">one pass · 20 GB · ~30s</span></button>
+    <button class="askbtn sweepbtn" data-set="3"><span class="bt">Sweep docs 31–40</span><span class="bs">one pass · 20 GB · ~30s</span></button>
+  </div>
+
+  <div class="sechead">3 · Clear a single tier <span class="hint">— instant, nothing recomputed · plus the physical NVMe proof</span></div>
+  <div class="grid4">
+    <button class="askbtn" id="thrash" style="border-color:#7a4a2a"><span class="bt">🌀 Clear GPU HBM</span><span class="bs">vLLM reset_prefix_cache</span></button>
+    <button class="askbtn" id="evictcpu" style="border-color:#6a5a2a"><span class="bt">🧹 Clear CPU RAM tier</span><span class="bs">LMCache controller clear</span></button>
+    <button class="askbtn" id="evictstorage" style="border-color:#5a3a6a"><span class="bt">🗑 Clear NIXL/NVMe tier</span><span class="bs">LMCache controller clear</span></button>
+    <button class="askbtn" id="evictall" style="border-color:#8a3a3a"><span class="bt">♻ Clear ALL tiers</span><span class="bs">GPU + CPU + NIXL · instant</span></button>
+  </div>
+
+  <div class="card clockcard" style="margin-top:26px;">
+    <div id="clock">0.000<small>&thinsp;s</small></div>
+    <div class="clockmeta" id="clockmeta">Waiting for the first request. Single requests: the clock ends at that
+      request's <b>server-side TTFT</b>. Batch sweeps: the clock counts <b>total batch time</b>; per-request TTFTs
+      land in the results log.</div>
+  </div>
+
+  <div class="sechead">4 · Or bring your own prompt <span class="hint">— send twice to see the cache effect on your own text (long pastes cache best)</span></div>
+  <div class="chatrow">
+    <textarea id="chatbox" rows="3" placeholder="Paste your prompt here…"></textarea>
+    <button id="chatsend" style="min-width:110px;"><span class="bt">Send ➤</span><span class="bs">256 tok max reply</span></button>
+  </div>
+  <div class="card" id="chatout"></div>
+
+  <div class="sechead">5 · Results <button id="clearlog" style="font-size:10.5px; padding:3px 10px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink3);">Clear</button></div>
+  <table>
+    <thead><tr><th>Time</th><th>Mode</th><th>Request</th><th style="width:42%">TTFT (per request)</th><th>Total</th></tr></thead>
+    <tbody id="log"><tr><td colspan="5" style="color:var(--ink3)">No requests yet.</td></tr></tbody>
+  </table>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+let busy = false, clockTimer = null, seenLog = 0;
+let lastStats = null, lastMode = null, lastRes = null;
+
+function setClock(sec, cls){
+  const c = $("#clock");
+  c.className = cls || "";
+  c.innerHTML = sec.toFixed(3) + "<small>&thinsp;s</small>";
+}
+
+/* ---------- tier cards ---------- */
+const TIER_DEFS = {
+  full: [
+    {k:"gpu",     name:"Tier 0 · GPU HBM"},
+    {k:"cpuram",  name:"Tier 1 · CPU RAM (pinned)", gb:60,   docs:30},
+    {k:"storage", name:"Tier 2 · NIXL pool → NVMe", gb:85.6, docs:41},
+  ],
+  baseline: [
+    {k:"gpu", name:"Tier 0 · GPU HBM"},
+    {k:"none", name:"— no tier —"},
+    {k:"none", name:"— no tier —"},
+  ],
+};
+function tierCard(t){
+  const s = lastStats, r = lastRes;
+  let budget = "…", fillPct = 0, fillText = "…", dim = "", tierAttr = ` data-tier="${t.k}"`;
+  if (t.k === "gpu"){
+    budget = s ? `${s.gpu_kv_gb} GB · ${(s.gpu_kv_tokens||0).toLocaleString()} tok · ~${Math.round(s.gpu_kv_gb/2)} docs` : "…";
+    if (r && r.gpu_cap_tok){
+      fillPct = Math.min(100, r.gpu_tok / r.gpu_cap_tok * 100);
+      fillText = `KV resident: ~${(r.gpu_tok*0.000192).toFixed(1)} GB · ${r.gpu_docs} requests (${fillPct.toFixed(0)}% full)`;
+    }
+  } else if (t.k === "cpuram"){
+    budget = `${t.gb} GB cap · ~${t.docs} docs`;
+    if (r && r.cpu_cap_tok){
+      fillPct = Math.min(100, r.cpu_tok / r.cpu_cap_tok * 100);
+      fillText = `KV resident: ~${(r.cpu_tok*0.000192).toFixed(1)} GB · ${r.cpu_docs} requests (${fillPct.toFixed(0)}% full)`;
+    } tierAttr = ' data-tier="cpu"';
+  } else if (t.k === "storage"){
+    budget = `${t.gb} GB cap · ~${t.docs} docs`;
+    if (r && r.storage_cap_tok){
+      fillPct = Math.min(100, r.storage_tok / r.storage_cap_tok * 100);
+      fillText = `KV resident: ~${(r.storage_tok*0.000192).toFixed(1)} GB · ${r.storage_docs} requests (${fillPct.toFixed(0)}% full)`;
+      if (s && s.nixl_kv_gb !== undefined)
+        fillText += `<br>on-disk pool: ${s.nixl_kv_gb} GB of ${t.gb} GB (written slots — high-water, survives clears)`;
+    }
+  } else {
+    budget = "evicted KV is lost"; fillText = "recompute is the only path back"; dim = " dim"; tierAttr = "";
+  }
+  return `<div class="card rescard tiercard${dim}"${tierAttr}>
+    <div class="rk">${t.name}</div><div class="rv" style="font-size:14px">${budget}</div>
+    <div class="rd">${fillText}</div>
+    <div class="bar"><div style="width:${fillPct.toFixed(1)}%"></div></div></div>`;
+}
+function renderTiers(){
+  const defs = TIER_DEFS[lastMode] || TIER_DEFS.baseline;
+  $("#tiermode").textContent = lastMode ? `· ${lastMode}` : "";
+  $("#tiers").innerHTML = defs.map(tierCard).join('<div class="tierarrow">→</div>');
+  document.querySelectorAll(".tiercard[data-tier]").forEach(c => c.onclick = () => showEvidence(c.dataset.tier));
+}
+async function showEvidence(tier){
+  const ev = $("#evidence"), body = $("#evbody");
+  ev.style.display = "block";
+  $("#evtitle").textContent = `live evidence · ${tier} tier`;
+  body.textContent = "running commands on the GPU server…";
+  try{
+    const r = await (await fetch("/api/evidence?tier=" + tier)).json();
+    if (r.error){ body.textContent = r.error; return; }
+    body.innerHTML = r.results.map(x =>
+      `<span class="cmd">$ ${x.cmd.replace(/&/g,"&amp;").replace(/</g,"&lt;")}</span>\n${x.out.replace(/&/g,"&amp;").replace(/</g,"&lt;")}\n`
+    ).join("\n");
+  }catch(e){ body.textContent = "evidence fetch failed: " + e; }
+}
+
+/* ---------- stats + status ---------- */
+async function stats(){
+  try{
+    const s = await (await fetch("/api/stats")).json();
+    if (s.error) return;
+    lastStats = s;
+    $("#r-gpu").textContent = `${s.gpu_used_gb} / ${s.gpu_total_gb} GB used`;
+    $("#b-gpu").style.width = Math.min(100, s.gpu_used_gb / s.gpu_total_gb * 100) + "%";
+    $("#r-ram").textContent = `${s.ram_used_gb} / ${s.ram_total_gb} GB used`;
+    $("#b-ram").style.width = Math.min(100, s.ram_used_gb / s.ram_total_gb * 100) + "%";
+    if (s.ram_anon_gb !== undefined)
+      $("#r-ramsplit").textContent = `${s.ram_anon_gb} GB processes · ${s.ram_file_gb} GB OS file cache`;
+    $("#r-disk").textContent = `${s.disk_avail_gb} GB free of ${s.disk_total_gb}`;
+    $("#b-disk").style.width = Math.min(100, (s.disk_total_gb - s.disk_avail_gb) / s.disk_total_gb * 100) + "%";
+    renderTiers();
+  }catch(e){}
+}
+
+async function status(){
+  try{
+    const s = await (await fetch("/api/status")).json();
+    const dot = $("#statusdot"), txt = $("#statustext");
+    document.querySelectorAll(".modebtn").forEach(b => {
+      b.classList.toggle("active", b.dataset.mode === s.mode);
+      b.disabled = s.switching || busy;
+    });
+    lastMode = s.mode;
+    if (s.residency) lastRes = s.residency;
+    renderTiers();
+    const spillRunning = s.spill && s.spill.running;
+    const wsRunning = s.workset && s.workset.running;
+    document.querySelectorAll(".askbtn").forEach(b => b.disabled = !s.ready || s.switching || busy || spillRunning || wsRunning);
+    if (s.switching){
+      dot.className = "dot busy";
+      txt.textContent = `restarting vLLM in "${s.mode}" mode — ${s.switch_elapsed}s (~2-3 min)`;
+    } else if (s.ready){
+      dot.className = "dot ok";
+      txt.textContent = `ready · mode: ${s.mode || "?"} · ${s.model}`;
+    } else {
+      dot.className = "dot busy";
+      txt.textContent = "vLLM loading… (~2-3 min)";
+    }
+    renderLog(s.log || []);
+    renderWorkset(s.workset);
+    renderSpill(s.spill);
+  }catch(e){
+    $("#statusdot").className = "dot down";
+    $("#statustext").textContent = "dashboard server unreachable — is the tunnel up?";
+  }
+}
+
+/* ---------- results log ---------- */
+function renderLog(log){
+  const sig = JSON.stringify(log);
+  if (sig === seenLog) return;
+  seenLog = sig;
+  const tb = $("#log");
+  tb.innerHTML = "";
+  if (!log.length){
+    tb.innerHTML = '<tr><td colspan="5" style="color:var(--ink3)">No requests yet.</td></tr>';
+    return;
+  }
+  const maxT = Math.max(...log.map(e => e.ttft), 0.001);
+  [...log].reverse().forEach(e => {
+    const tr = document.createElement("tr");
+    const w = Math.max(2, Math.round(e.ttft / maxT * 220));
+    const fast = e.ttft < 0.8 ? " class=fast" : "";
+    tr.innerHTML = `<td>${e.ts}</td><td><span class="mode-pill">${e.mode||"?"}</span></td>` +
+      `<td>${e.label}</td><td${fast}><span class="bar" style="width:${w}px"></span>${e.ttft.toFixed(3)}s</td>` +
+      `<td>${e.total.toFixed(3)}s</td>`;
+    tb.appendChild(tr);
+  });
+}
+
+/* ---------- mode switching ---------- */
+document.querySelectorAll(".modebtn").forEach(b => b.onclick = async () => {
+  await fetch("/api/mode", {method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({mode: b.dataset.mode})});
+  status();
+});
+
+/* ---------- single requests ---------- */
+document.querySelectorAll(".askbtn[data-doc]").forEach(b => b.onclick = async () => {
+  busy = true; status();
+  const t0 = performance.now();
+  setClock(0, "running");
+  clockTimer = setInterval(() => setClock((performance.now()-t0)/1000, "running"), 33);
+  $("#clockmeta").innerHTML = "Running… the final number is <b>TTFT measured at the server</b> (excludes your network).";
+  try{
+    const r = await (await fetch("/api/ask", {method:"POST",
+      headers:{"Content-Type":"application/json"}, body: JSON.stringify({doc: b.dataset.doc})})).json();
+    clearInterval(clockTimer);
+    if (r.error){ setClock(0, ""); $("#clockmeta").innerHTML = `<b style="color:var(--red)">${r.error}</b>`; }
+    else{
+      setClock(r.ttft, "done");
+      const wall = ((performance.now()-t0)/1000).toFixed(2);
+      $("#clockmeta").innerHTML = `<b>server TTFT ${r.ttft.toFixed(3)}s</b> · generation total ${r.total.toFixed(3)}s · ` +
+        `${r.tokens} tokens · ${r.label} · mode: ${r.mode}<br>` +
+        `<span style="color:var(--ink3)">wall time incl. network round-trip: ${wall}s</span>` +
+        `<span class="ans">“${r.answer}”</span>`;
+    }
+  }catch(e){
+    clearInterval(clockTimer); setClock(0, "");
+    $("#clockmeta").innerHTML = `<b style="color:var(--red)">request failed: ${e}</b>`;
+  }
+  busy = false; status();
+});
+
+/* ---------- sweeps ---------- */
+let worksetActive = false, worksetT0 = 0;
+document.querySelectorAll(".sweepbtn").forEach(b => b.onclick = async () => {
+  if (busy || spillActive || worksetActive) return;
+  try{
+    const r = await (await fetch("/api/sweep", {method:"POST",
+      headers:{"Content-Type":"application/json"}, body: JSON.stringify({set: +b.dataset.set})})).json();
+    if (r.error){ $("#clockmeta").innerHTML = `<b style="color:var(--red)">${r.error}</b>`; return; }
+    status();
+  }catch(e){
+    $("#clockmeta").innerHTML = `<b style="color:var(--red)">sweep start failed: ${e}</b>`;
+  }
+});
+function renderWorkset(ws){
+  if (ws && ws.running){
+    if (!worksetActive){
+      worksetActive = true;
+      worksetT0 = performance.now() - (ws.elapsed || 0) * 1000;
+      setClock(ws.elapsed || 0, "running");
+      clockTimer = setInterval(() => setClock((performance.now()-worksetT0)/1000, "running"), 33);
+    }
+    $("#clockmeta").innerHTML = `<b>Sweeping doc set ${ws.set}:</b> doc ${Math.min(ws.done+1,10)}/10. ` +
+      `Watch the tier gauges above — every doc lands in all tiers, and full tiers evict their oldest.`;
+  } else if (worksetActive){
+    worksetActive = false;
+    clearInterval(clockTimer);
+    if (ws && ws.summary){
+      const batch = (performance.now()-worksetT0)/1000;
+      setClock(batch, "done");
+      $("#clockmeta").innerHTML = `<b>Set ${ws.summary.set}: 10 docs in ${batch.toFixed(1)}s total (the clock).</b> ` +
+        `Each doc is its own request with its own TTFT — mean <b>${ws.summary.mean.toFixed(3)}s per doc</b>, ` +
+        `individual rows in the log. Decoder: ~1.8s cold · ~0.07s GPU · ~0.17s CPU RAM · ~0.35s NIXL/NVMe.`;
+    } else {
+      setClock(0, "");
+      $("#clockmeta").innerHTML = "<b style='color:var(--red)'>sweep ended without a summary</b>";
+    }
+  }
+}
+
+/* ---------- tier clears ---------- */
+$("#thrash").onclick = async () => {
+  busy = true; status();
+  try{
+    const r = await (await fetch("/api/thrash", {method:"POST",
+      headers:{"Content-Type":"application/json"}, body:"{}"})).json();
+    setClock(0, "");
+    $("#clockmeta").innerHTML = r.ok ?
+      "<b>GPU cache evicted</b> (every prefix-cache block freed, nothing recomputed). Re-ask a doc: in full mode a lower tier serves it — no prefill." :
+      `<b style="color:var(--red)">${r.error}</b>`;
+  }catch(e){
+    $("#clockmeta").innerHTML = `<b style="color:var(--red)">evict failed: ${e}</b>`;
+  }
+  busy = false; status();
+};
+$("#evictcpu").onclick = async () => {
+  if (busy || spillActive) return;
+  busy = true; status();
+  try{
+    const r = await (await fetch("/api/evict_cpu", {method:"POST",
+      headers:{"Content-Type":"application/json"}, body:"{}"})).json();
+    setClock(0, "");
+    $("#clockmeta").innerHTML = r.ok ?
+      `<b>CPU tier evicted</b> — controller dropped ${(r.num_tokens||0).toLocaleString()} cached tokens, nothing recomputed.` :
+      `<b style="color:var(--red)">${r.error}</b>`;
+  }catch(e){
+    $("#clockmeta").innerHTML = `<b style="color:var(--red)">evict failed: ${e}</b>`;
+  }
+  busy = false; status();
+};
+$("#evictstorage").onclick = async () => {
+  if (busy || spillActive) return;
+  busy = true; status();
+  try{
+    const r = await (await fetch("/api/evict_storage", {method:"POST",
+      headers:{"Content-Type":"application/json"}, body:"{}"})).json();
+    setClock(0, "");
+    $("#clockmeta").innerHTML = r.ok ?
+      `<b>NIXL/NVMe tier evicted</b> — controller dropped ${(r.num_tokens||0).toLocaleString()} cached tokens. ` +
+      `The bottom of the pyramid is empty: docs held nowhere else must fully recompute.` :
+      `<b style="color:var(--red)">${r.error}</b>`;
+  }catch(e){
+    $("#clockmeta").innerHTML = `<b style="color:var(--red)">evict failed: ${e}</b>`;
+  }
+  busy = false; status();
+};
+
+/* ---------- clear all ---------- */
+let spillActive = false, spillT0 = 0;
+$("#evictall").onclick = async () => {
+  if (busy || spillActive) return;
+  busy = true; status();
+  try{
+    const r = await (await fetch("/api/evict_all", {method:"POST",
+      headers:{"Content-Type":"application/json"}, body:"{}"})).json();
+    setClock(0, "");
+    $("#clockmeta").innerHTML = r.ok ?
+      `<b>Every tier cleared</b> — ${r.detail}. The system now has total amnesia: the next request for ` +
+      `any doc pays full prefill (~1.8s), exactly like a baseline server all the time.` :
+      `<b style="color:var(--red)">${r.error}</b>`;
+  }catch(e){
+    $("#clockmeta").innerHTML = `<b style="color:var(--red)">clear all failed: ${e}</b>`;
+  }
+  busy = false; status();
+};
+function renderSpill(sp){
+  if (sp && sp.running){
+    if (!spillActive){
+      spillActive = true;
+      spillT0 = performance.now() - (sp.elapsed || 0) * 1000;
+      setClock(sp.elapsed || 0, "running");
+      clockTimer = setInterval(() => setClock((performance.now()-spillT0)/1000, "running"), 33);
+    }
+    const phase = sp.cold < 16 ? `cold sweep — prefilling doc ${Math.min(sp.cold+1,16)}/16 (~1.8s each)`
+                : sp.warm === 0 ? "dropping OS page cache + GPU cache for all KV…"
+                : `warm sweep — reading doc ${Math.min(sp.warm+1,16)}/16 back off NVMe`;
+    $("#clockmeta").innerHTML = `<b>NVMe proof in progress:</b> ${phase}.<br>` +
+      `Clock shows total batch time — per-request TTFT lands in the results log.`;
+  } else if (spillActive){
+    spillActive = false;
+    clearInterval(clockTimer);
+    const batch = ((performance.now()-spillT0)/1000).toFixed(0);
+    if (sp && sp.summary){
+      setClock(+batch, "done");
+      $("#clockmeta").innerHTML = `<b>NVMe proof: ${batch}s total (the clock).</b> ` +
+        `${sp.summary.docs} docs re-served at mean per-request TTFT ${sp.summary.warm_ttft_mean.toFixed(3)}s ` +
+        `with <b>${sp.summary.total_gb_nvme} GB physically read from NVMe</b> — the page cache was dropped, RAM could not serve them.`;
+    } else {
+      setClock(0, "");
+      $("#clockmeta").innerHTML = "<b style='color:var(--red)'>proof ended without a summary — check server logs</b>";
+    }
+  }
+}
+
+/* ---------- chat ---------- */
+$("#chatsend").onclick = async () => {
+  const prompt = $("#chatbox").value.trim();
+  if (!prompt || busy) return;
+  busy = true; status();
+  $("#chatsend").disabled = true;
+  const t0 = performance.now();
+  setClock(0, "running");
+  clockTimer = setInterval(() => setClock((performance.now()-t0)/1000, "running"), 33);
+  $("#clockmeta").innerHTML = "Running your prompt… final number is server-side TTFT.";
+  const out = $("#chatout");
+  out.style.display = "none";
+  try{
+    const r = await (await fetch("/api/chat", {method:"POST",
+      headers:{"Content-Type":"application/json"}, body: JSON.stringify({prompt})})).json();
+    clearInterval(clockTimer);
+    if (r.error){ setClock(0, ""); $("#clockmeta").innerHTML = `<b style="color:var(--red)">${r.error}</b>`; }
+    else{
+      setClock(r.ttft, "done");
+      const wall = ((performance.now()-t0)/1000).toFixed(2);
+      $("#clockmeta").innerHTML = `<b>server TTFT ${r.ttft.toFixed(3)}s</b> · generation total ${r.total.toFixed(3)}s · ` +
+        `${r.tokens} tokens · mode: ${r.mode}<br>` +
+        `<span style="color:var(--ink3)">wall time incl. network round-trip: ${wall}s</span>`;
+      out.textContent = r.answer;
+      out.style.display = "block";
+    }
+  }catch(e){
+    clearInterval(clockTimer); setClock(0, "");
+    $("#clockmeta").innerHTML = `<b style="color:var(--red)">request failed: ${e}</b>`;
+  }
+  $("#chatsend").disabled = false;
+  busy = false; status();
+};
+
+/* ---------- clear log ---------- */
+$("#clearlog").onclick = async () => {
+  await fetch("/api/clear", {method:"POST", headers:{"Content-Type":"application/json"}, body:"{}"});
+  status();
+};
+
+status();
+stats();
+setTimeout(stats, 2000);
+setTimeout(stats, 5000);
+setInterval(status, 2500);
+setInterval(stats, 5000);
+</script>
+</body>
+</html>

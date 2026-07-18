@@ -1,0 +1,298 @@
+<title>KV Cache Tiering — LMCache + NIXL Benchmark</title>
+<style>
+  :root{
+    --ground:#0a1628; --card:#101f38; --card2:#162a4a;
+    --line:#1e3355; --cyan:#00d4ff; --teal:#00a3cc;
+    --ink:#ffffff; --ink2:#b8c5d4; --ink3:#7e8fa4;
+    --mark:#00d4ff; --mark-dim:#8fa0b4;
+  }
+  html{background:var(--ground);}
+  body{
+    background:var(--ground); color:var(--ink);
+    font-family:"Aptos Display","Segoe UI",-apple-system,"Helvetica Neue",Arial,sans-serif;
+    margin:0; line-height:1.55;
+  }
+  .wrap{max-width:1060px; margin:0 auto; padding:40px 28px 72px;}
+  header{display:flex; align-items:center; justify-content:space-between; gap:16px; margin-bottom:44px;}
+  .eyebrow{font-size:11px; letter-spacing:.22em; text-transform:uppercase; color:var(--cyan); font-weight:700;}
+  h1{font-size:clamp(26px,4vw,38px); line-height:1.12; margin:10px 0 8px; font-weight:800; text-wrap:balance;}
+  .sub{color:var(--ink2); max-width:62ch; margin:0;}
+  .logo{height:34px; flex:none;}
+  h2{font-size:19px; margin:0 0 4px; font-weight:700;}
+  .sect{margin-top:52px;}
+  .sect > p.lead{color:var(--ink2); margin:0 0 20px; max-width:70ch;}
+  /* stat tiles */
+  .tiles{display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:14px;}
+  .tile{background:var(--card); border:1px solid var(--line); border-top:2px solid var(--teal); padding:18px 18px 14px;}
+  .tile.hero{border-top-color:var(--cyan); background:linear-gradient(180deg,#122440 0%,var(--card) 60%);}
+  .tile .k{font-size:11px; letter-spacing:.18em; text-transform:uppercase; color:var(--ink3); font-weight:700;}
+  .tile .v{font-size:34px; font-weight:800; margin:6px 0 2px; font-variant-numeric:tabular-nums;}
+  .tile .v small{font-size:16px; color:var(--ink2); font-weight:600;}
+  .tile .d{font-size:13px; color:var(--ink2);}
+  .tile .d b{color:var(--cyan); font-weight:700;}
+  /* charts */
+  .panel{background:var(--card); border:1px solid var(--line); padding:22px 22px 16px; margin-top:18px; overflow-x:auto;}
+  .panel h3{margin:0; font-size:15px; font-weight:700;}
+  .panel .note{font-size:12.5px; color:var(--ink3); margin:2px 0 14px;}
+  svg text{font-family:inherit;}
+  .grid line{stroke:var(--line); stroke-width:1;}
+  .axis text{fill:var(--ink3); font-size:11px;}
+  .multiples{display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:14px;}
+  /* pipeline */
+  .pipe{display:flex; flex-wrap:wrap; align-items:stretch; gap:0; margin-top:18px;}
+  .stage{flex:1 1 200px; background:var(--card); border:1px solid var(--line); padding:16px 18px; position:relative;}
+  .stage + .stage{margin-left:26px;}
+  .stage + .stage::before{
+    content:"→"; position:absolute; left:-22px; top:50%; transform:translateY(-50%);
+    color:var(--cyan); font-size:18px; font-weight:800;
+  }
+  .stage .t{font-weight:700; margin-bottom:4px;}
+  .stage .t span{color:var(--cyan);}
+  .stage .m{font-size:13px; color:var(--ink2);}
+  .stage.gpu{border-top:2px solid var(--cyan);}
+  .stage.cpu{border-top:2px solid var(--teal);}
+  .stage.nvme{border-top:2px solid #3d6ea8;}
+  /* table */
+  table{border-collapse:collapse; width:100%; margin-top:18px; font-size:14px;}
+  th{font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink3); text-align:left; font-weight:700;}
+  th,td{padding:10px 14px; border-bottom:1px solid var(--line);}
+  td{color:var(--ink2); font-variant-numeric:tabular-nums;}
+  td:first-child{color:var(--ink); font-weight:600;}
+  tr.hl td{background:rgba(0,212,255,.05);}
+  .num{text-align:right;}
+  .speed{color:var(--cyan); font-weight:700;}
+  /* misc */
+  .foot{margin-top:56px; padding-top:18px; border-top:1px solid var(--line); color:var(--ink3); font-size:12.5px;}
+  .foot p{margin:4px 0; max-width:90ch;}
+  code{background:var(--card2); border:1px solid var(--line); padding:1px 6px; font-size:.88em; color:var(--ink2); font-family:"SF Mono",Consolas,Menlo,monospace;}
+  #tip{
+    position:fixed; pointer-events:none; display:none; z-index:10;
+    background:#050d1c; border:1px solid var(--cyan); color:var(--ink);
+    font-size:12px; padding:6px 10px; font-variant-numeric:tabular-nums; white-space:nowrap;
+  }
+  ul.notes{color:var(--ink2); font-size:14px; padding-left:20px; max-width:82ch;}
+  ul.notes li{margin-bottom:8px;}
+  @media (max-width:760px){ .stage{flex:none;} .stage + .stage{margin-left:0; margin-top:24px;} .stage + .stage::before{content:"↓"; left:50%; top:-23px; transform:translateX(-50%);} .pipe{flex-direction:column;} }
+</style>
+
+<div class="wrap">
+  <header>
+    <div>
+      <div class="eyebrow">AI Infrastructure Demo · vLLM + LMCache + NVIDIA NIXL</div>
+      <h1>Tiering the KV cache off the GPU</h1>
+      <p class="sub">When the working set outgrows GPU HBM, prefill gets recomputed on every repeat request.
+      LMCache tiers KV blocks to CPU RAM and external storage over NVIDIA NIXL — and repeat-request
+      latency drops by up to 10×.</p>
+    </div>
+    <img class="logo" alt="VAST Data" src="data:image/webp;base64,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">
+  </header>
+
+  <div class="tiles">
+    <div class="tile">
+      <div class="k">Without tiering</div>
+      <div class="v">1.74<small>&thinsp;s</small></div>
+      <div class="d">TTFT on every repeat request — GPU cache thrashes, full 12k-token prefill each time</div>
+    </div>
+    <div class="tile hero">
+      <div class="k">CPU RAM tier</div>
+      <div class="v">0.17<small>&thinsp;s</small></div>
+      <div class="d"><b>10.3× faster</b> time-to-first-token on cached contexts</div>
+    </div>
+    <div class="tile hero">
+      <div class="k">NVMe via NIXL</div>
+      <div class="v">0.36<small>&thinsp;s</small></div>
+      <div class="d"><b>4.8× faster</b> — KV served from external storage through the NIXL POSIX plugin</div>
+    </div>
+    <div class="tile">
+      <div class="k">Cache write cost</div>
+      <div class="v">~6<small>&thinsp;%</small></div>
+      <div class="d">one-time prefill overhead to store KV off-GPU (1.74s → 1.83s cold)</div>
+    </div>
+  </div>
+
+  <div class="sect">
+    <h2>Warm-request TTFT by configuration</h2>
+    <p class="lead">Mean time-to-first-token across 48 repeat requests (passes 2–3), 24 unique
+    ~12k-token documents. Tick marks show p95.</p>
+    <div class="panel"><div id="barchart"></div></div>
+  </div>
+
+  <div class="sect">
+    <h2>Every request, in order</h2>
+    <p class="lead">All 72 requests per configuration, same y-scale. The first 24 requests are cold
+    (unique documents). At request 25 the workload repeats — and the tiered configurations fall off a
+    cliff while the baseline stays pinned at full-prefill latency.</p>
+    <div class="multiples" id="multiples"></div>
+  </div>
+
+  <div class="sect">
+    <h2>Where the KV blocks live</h2>
+    <div class="pipe">
+      <div class="stage gpu">
+        <div class="t"><span>Tier 0</span> · GPU HBM</div>
+        <div class="m">vLLM paged KV cache, capped at 74,880 tokens (~14&thinsp;GB). Working set is 4× larger — this tier alone thrashes.</div>
+      </div>
+      <div class="stage cpu">
+        <div class="t"><span>Tier 1</span> · CPU RAM</div>
+        <div class="m">LMCache pinned-memory pool. 256-token chunks (48&thinsp;MB each) moved over PCIe. Warm TTFT 0.17&thinsp;s.</div>
+      </div>
+      <div class="stage nvme">
+        <div class="t"><span>Tier 2</span> · External storage via NIXL</div>
+        <div class="m">NVIDIA NIXL POSIX plugin → 1,500-slot file pool on NVMe (67&thinsp;GB written). In production this is a VAST NFS / GDS mount. Warm TTFT 0.36&thinsp;s.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sect">
+    <h2>Full results</h2>
+    <table>
+      <thead><tr>
+        <th>Configuration</th><th>KV path</th>
+        <th class="num">Cold TTFT</th><th class="num">Warm TTFT</th>
+        <th class="num">Warm p95</th><th class="num">Speedup</th>
+      </tr></thead>
+      <tbody>
+        <tr><td>Baseline vLLM</td><td>GPU HBM only (prefix cache thrashed)</td>
+          <td class="num">1.731&thinsp;s</td><td class="num">1.741&thinsp;s</td><td class="num">1.755&thinsp;s</td><td class="num">1.0×</td></tr>
+        <tr class="hl"><td>LMCache · CPU</td><td>GPU → pinned CPU RAM (80&thinsp;GB)</td>
+          <td class="num">1.829&thinsp;s</td><td class="num">0.170&thinsp;s</td><td class="num">0.180&thinsp;s</td><td class="num speed">10.3×</td></tr>
+        <tr><td>LMCache · Disk</td><td>GPU → CPU (20&thinsp;GB) → NVMe files</td>
+          <td class="num">1.854&thinsp;s</td><td class="num">0.434&thinsp;s</td><td class="num">0.513&thinsp;s</td><td class="num speed">4.0×</td></tr>
+        <tr class="hl"><td>LMCache · NIXL</td><td>GPU → NIXL POSIX plugin → NVMe pool</td>
+          <td class="num">1.831&thinsp;s</td><td class="num">0.362&thinsp;s</td><td class="num">0.417&thinsp;s</td><td class="num speed">4.8×</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="sect">
+    <h2>Method &amp; environment</h2>
+    <ul class="notes">
+      <li><b>Hardware:</b> 1× NVIDIA A100 80GB PCIe (vast.ai, $1.03/hr), 24 vCPU, local NVMe.</li>
+      <li><b>Stack:</b> vLLM 0.24.0 · LMCache 0.5.1 · NIXL (pip, POSIX plugin) · Qwen2.5-14B-Instruct, bf16.</li>
+      <li><b>Workload:</b> 24 unique synthetic documents × ~12k tokens, 3 sequential passes (72 requests), streaming chat completions, <code>max_tokens=32</code>, <code>temperature=0</code>. TTFT = time to first streamed token, measured on-box (no WAN).</li>
+      <li><b>Pressure:</b> <code>--gpu-memory-utilization 0.55</code> caps the GPU KV cache at 74,880 tokens vs a ~290k-token working set, so the baseline's prefix cache evicts before any document repeats — the honest "GPU-only" failure mode at scale.</li>
+      <li><b>LMCache wiring:</b> <code>--kv-transfer-config '{"kv_connector":"LMCacheConnectorV1","kv_role":"kv_both"}'</code>; NIXL tier via <code>enable_nixl_storage</code>, <code>nixl_backend: POSIX</code>, <code>nixl_buffer_device: cpu</code>, <code>nixl_pool_size: 1500</code> (descriptor <i>count</i> — one 48&thinsp;MB chunk file per slot, not bytes).</li>
+      <li><b>Gotchas we hit</b> (so you don't have to): POSIX backend requires a CPU staging buffer; <code>nixl_pool_size</code> given in bytes allocates a few hundred GB of index and gets OOM-killed; the file pool holds one fd per slot, so raise <code>ulimit -n</code>. On a misconfigured backend LMCache degrades gracefully to recompute — correct answers at baseline speed.</li>
+    </ul>
+  </div>
+
+  <div class="foot">
+    <p>Benchmarked 2026-07-18 on vast.ai instance 45214089. Total experiment cost ≈ $2.50 in GPU-hours.</p>
+    <p>The NVMe file pool stands in for any NIXL-reachable external target — an NFS/GDS mount on a VAST cluster behaves identically at the API level, with capacity decoupled from the GPU node.</p>
+  </div>
+</div>
+
+<div id="tip"></div>
+
+<script>
+const DATA = {
+  baseline: [2.13, 1.698, 1.697, 1.701, 1.703, 1.707, 1.707, 1.728, 1.711, 1.708, 1.722, 1.716, 1.712, 1.715, 1.716, 1.712, 1.714, 1.719, 1.716, 1.723, 1.722, 1.726, 1.723, 1.726, 1.731, 1.725, 1.726, 1.729, 1.729, 1.729, 1.729, 1.752, 1.729, 1.733, 1.735, 1.735, 1.736, 1.735, 1.736, 1.736, 1.736, 1.741, 1.735, 1.737, 1.74, 1.742, 1.746, 1.741, 1.75, 1.745, 1.741, 1.741, 1.741, 1.741, 1.739, 1.761, 1.742, 1.742, 1.746, 1.744, 1.743, 1.747, 1.744, 1.742, 1.754, 1.757, 1.751, 1.749, 1.753, 1.755, 1.753, 1.755],
+  cpu: [2.193, 1.792, 1.793, 1.804, 1.803, 1.793, 1.798, 1.819, 1.824, 1.839, 1.828, 1.825, 1.827, 1.817, 1.805, 1.802, 1.809, 1.819, 1.816, 1.811, 1.818, 1.827, 1.822, 1.818, 0.18, 0.179, 0.179, 0.182, 0.179, 0.182, 0.176, 0.151, 0.168, 0.165, 0.172, 0.17, 0.168, 0.178, 0.173, 0.171, 0.179, 0.177, 0.174, 0.176, 0.172, 0.156, 0.171, 0.171, 0.17, 0.164, 0.166, 0.171, 0.169, 0.169, 0.166, 0.153, 0.169, 0.163, 0.17, 0.172, 0.162, 0.168, 0.166, 0.166, 0.168, 0.171, 0.171, 0.171, 0.164, 0.148, 0.167, 0.168],
+  disk: [1.962, 1.825, 1.818, 1.833, 1.845, 1.847, 1.846, 1.871, 1.832, 1.831, 1.848, 1.834, 1.854, 1.855, 1.861, 1.863, 1.836, 1.842, 1.877, 1.848, 1.876, 1.865, 1.855, 1.858, 0.408, 0.515, 0.512, 0.498, 0.49, 0.488, 0.495, 0.512, 0.514, 0.509, 0.513, 0.509, 0.506, 0.41, 0.442, 0.427, 0.42, 0.408, 0.427, 0.442, 0.449, 0.479, 0.415, 0.422, 0.417, 0.406, 0.395, 0.401, 0.404, 0.406, 0.405, 0.388, 0.406, 0.4, 0.411, 0.406, 0.402, 0.4, 0.405, 0.399, 0.401, 0.399, 0.397, 0.398, 0.397, 0.382, 0.395, 0.398],
+  nixl: [1.912, 1.803, 1.804, 1.802, 1.806, 1.809, 1.81, 1.833, 1.81, 1.816, 1.82, 1.817, 1.821, 1.827, 1.836, 1.847, 1.851, 1.848, 1.851, 1.845, 1.84, 1.846, 1.853, 1.846, 0.396, 0.381, 0.373, 0.363, 0.362, 0.362, 0.363, 0.337, 0.359, 0.348, 0.352, 0.351, 0.351, 0.355, 0.357, 0.354, 0.83, 0.359, 0.352, 0.337, 0.337, 0.324, 0.338, 0.338, 0.347, 0.34, 0.347, 0.346, 0.347, 0.348, 0.352, 0.339, 0.349, 0.342, 0.346, 0.345, 0.342, 0.346, 0.346, 0.342, 0.348, 0.347, 0.346, 0.339, 0.335, 0.321, 0.417, 0.417]
+};
+const META = {
+  baseline: {name:"Baseline vLLM", warm:1.741, p95:1.755, color:"var(--mark-dim)"},
+  cpu:      {name:"LMCache · CPU RAM", warm:0.170, p95:0.180, color:"var(--mark)"},
+  disk:     {name:"LMCache · Disk", warm:0.434, p95:0.513, color:"var(--mark)"},
+  nixl:     {name:"LMCache · NIXL → NVMe", warm:0.362, p95:0.417, color:"var(--mark)"}
+};
+const NS = "http://www.w3.org/2000/svg";
+const tip = document.getElementById("tip");
+function showTip(evt, html){
+  tip.innerHTML = html; tip.style.display = "block";
+  const pad = 14, w = tip.offsetWidth;
+  let x = evt.clientX + pad;
+  if (x + w > innerWidth - 8) x = evt.clientX - w - pad;
+  tip.style.left = x + "px"; tip.style.top = (evt.clientY - 30) + "px";
+}
+function hideTip(){ tip.style.display = "none"; }
+function el(tag, attrs, parent){
+  const n = document.createElementNS(NS, tag);
+  for (const k in attrs) n.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(n);
+  return n;
+}
+
+// ---- horizontal bar chart ----
+(function(){
+  const order = ["baseline","cpu","disk","nixl"];
+  const W = 960, rowH = 46, padL = 190, padR = 90, padT = 8;
+  const H = padT + order.length*rowH + 30;
+  const xmax = 2.0, xs = v => padL + v/xmax*(W-padL-padR);
+  const svg = el("svg", {viewBox:`0 0 ${W} ${H}`, width:"100%", role:"img",
+    "aria-label":"Warm TTFT by configuration"}, document.getElementById("barchart"));
+  const grid = el("g", {class:"grid"}, svg);
+  const axis = el("g", {class:"axis"}, svg);
+  for (let v = 0; v <= xmax; v += 0.5){
+    el("line", {x1:xs(v), y1:padT, x2:xs(v), y2:H-26}, grid);
+    const t = el("text", {x:xs(v), y:H-10, "text-anchor":"middle"}, axis);
+    t.textContent = v.toFixed(1) + "s";
+  }
+  order.forEach((k, i) => {
+    const m = META[k], y = padT + i*rowH + rowH/2;
+    const lbl = el("text", {x:padL-12, y:y+4, "text-anchor":"end", fill:"var(--ink)",
+      "font-size":"13", "font-weight":k==="baseline"?"400":"600"}, svg);
+    lbl.textContent = m.name;
+    const bw = xs(m.warm) - xs(0);
+    const bar = el("rect", {x:xs(0), y:y-9, width:bw, height:18, rx:0, fill:m.color}, svg);
+    el("rect", {x:xs(0)+bw-4, y:y-9, width:4, height:18, rx:2, fill:m.color}, svg);
+    // p95 tick
+    el("line", {x1:xs(m.p95), y1:y-13, x2:xs(m.p95), y2:y+13, stroke:"var(--ink)",
+      "stroke-width":1.5, opacity:.55}, svg);
+    const val = el("text", {x:xs(m.warm)+10, y:y+4, fill:"var(--ink)", "font-size":"13",
+      "font-weight":"700", style:"font-variant-numeric:tabular-nums"}, svg);
+    val.textContent = m.warm.toFixed(3) + "s" + (k==="baseline" ? "" : "  ·  " + (1.741/m.warm).toFixed(1) + "×");
+    const hit = el("rect", {x:0, y:y-rowH/2, width:W, height:rowH, fill:"transparent"}, svg);
+    hit.addEventListener("mousemove", e => showTip(e,
+      `<b>${m.name}</b><br>warm mean ${m.warm.toFixed(3)}s · p95 ${m.p95.toFixed(3)}s`));
+    hit.addEventListener("mouseleave", hideTip);
+  });
+})();
+
+// ---- small multiples ----
+(function(){
+  const order = ["baseline","cpu","disk","nixl"];
+  const wrap = document.getElementById("multiples");
+  const W = 460, H = 190, padL = 40, padR = 10, padT = 26, padB = 24;
+  const ymax = 2.3;
+  const xs = i => padL + i/71*(W-padL-padR);
+  const ys = v => padT + (1 - v/ymax)*(H-padT-padB);
+  order.forEach(k => {
+    const m = META[k];
+    const panel = document.createElement("div");
+    panel.className = "panel"; panel.style.marginTop = "0";
+    wrap.appendChild(panel);
+    const h = document.createElement("h3"); h.textContent = m.name; panel.appendChild(h);
+    const n = document.createElement("div"); n.className = "note";
+    n.textContent = k === "baseline" ? "no reuse — every repeat re-prefills" :
+      "requests 25+ served from " + (k==="cpu" ? "CPU RAM" : k==="disk" ? "NVMe (LMCache disk)" : "NVMe via NIXL");
+    panel.appendChild(n);
+    const svg = el("svg", {viewBox:`0 0 ${W} ${H}`, width:"100%", role:"img",
+      "aria-label":m.name+" per-request TTFT"}, panel);
+    const grid = el("g", {class:"grid"}, svg);
+    const axis = el("g", {class:"axis"}, svg);
+    [0,1,2].forEach(v => {
+      el("line", {x1:padL, y1:ys(v), x2:W-padR, y2:ys(v)}, grid);
+      const t = el("text", {x:padL-6, y:ys(v)+4, "text-anchor":"end"}, axis);
+      t.textContent = v + "s";
+    });
+    // pass boundaries
+    [24,48].forEach((b,bi) => {
+      el("line", {x1:xs(b)-2, y1:padT-4, x2:xs(b)-2, y2:H-padB, stroke:"var(--line)",
+        "stroke-width":1, "stroke-dasharray":"3 3"}, svg);
+      const t = el("text", {x:xs(b)+2, y:padT-8, class:"axis"}, axis);
+      t.setAttribute("x", xs(b)+2); t.setAttribute("y", padT-8);
+      t.textContent = "pass " + (bi+2);
+      t.setAttribute("fill","var(--ink3)"); t.setAttribute("font-size","10");
+    });
+    DATA[k].forEach((v,i) => {
+      const c = el("circle", {cx:xs(i), cy:ys(Math.min(v,ymax)), r:3,
+        fill:m.color, stroke:"var(--card)", "stroke-width":1}, svg);
+      c.addEventListener("mousemove", e => showTip(e,
+        `<b>${m.name}</b><br>request ${i+1} · TTFT ${v.toFixed(3)}s`));
+      c.addEventListener("mouseleave", hideTip);
+    });
+  });
+})();
+</script>

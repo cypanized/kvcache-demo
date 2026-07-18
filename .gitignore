@@ -1,0 +1,7 @@
+.DS_Store
+__pycache__/
+*.pyc
+# runtime state (regenerated per deployment)
+demo/log.json
+demo/instance.json
+demo/docs.json
