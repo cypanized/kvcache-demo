@@ -405,7 +405,9 @@ def gather_evidence(tier):
             out = (r.stdout or r.stderr).strip() or "(no output)"
         except Exception as e:
             out = f"(failed: {e})"
-        results.append({"cmd": cmd, "out": out[-1500:]})
+        if len(out) > 6000:
+            out = out[:6000] + "\n… (output truncated)"
+        results.append({"cmd": cmd, "out": out})
     return {"tier": tier, "results": results}
 
 
