@@ -412,6 +412,8 @@ class H(BaseHTTPRequestHandler):
             self._json(gather_evidence(tier))
         elif self.path == "/api/status":
             model = vllm_ready()
+            if not state["switching"]:
+                detect_mode()  # self-heal if the UI started before the server's log existed
             rs = residency_snapshot()
             with lock:
                 ce = dict(state["cpu_evict"])
