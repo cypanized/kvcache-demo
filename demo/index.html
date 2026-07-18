@@ -101,6 +101,7 @@
   .logscroll td{padding:3px 8px; border-bottom:1px solid var(--line);
     font-variant-numeric:tabular-nums; color:var(--ink2);}
   .logscroll td .bar{display:inline-block; height:7px; background:var(--teal); vertical-align:middle; margin-right:5px;}
+  .logscroll td .dbar{background:#46627f;}
   .logscroll td.fast .bar{background:var(--cyan);}
   .mode-pill{font-size:9px; padding:1px 5px; border:1px solid var(--line); color:var(--ink2);}
   /* explainers */
@@ -202,7 +203,7 @@
       <div class="loghead">Results <button id="clearlog">Clear</button></div>
       <div class="logscroll">
         <table>
-          <thead><tr><th>Time</th><th>Mode</th><th>Request</th><th style="width:32%;">TTFT (per request)</th><th style="text-align:center;">Decode</th><th style="text-align:center;">Total</th></tr></thead>
+          <thead><tr><th>Time</th><th>Mode</th><th>Request</th><th style="width:26%;">TTFT (per request)</th><th style="width:22%;">Decode</th><th style="text-align:center;">Total</th></tr></thead>
           <tbody id="log"><tr><td colspan="6" style="color:var(--ink3)">No requests yet.</td></tr></tbody>
         </table>
       </div>
@@ -406,15 +407,16 @@ function renderLog(log){
     tb.innerHTML = '<tr><td colspan="6" style="color:var(--ink3)">No requests yet.</td></tr>';
     return;
   }
-  const maxT = Math.max(...log.map(e => e.ttft), 0.001);
+  const maxT = Math.max(...log.map(e => Math.max(e.ttft, e.total - e.ttft)), 0.001);
   [...log].reverse().forEach(e => {
     const tr = document.createElement("tr");
     const w = Math.max(2, Math.round(e.ttft / maxT * 110));
     const fast = e.ttft < 0.8 ? " class=fast" : "";
     const dec = e.total - e.ttft;
+    const dw = Math.max(2, Math.round(dec / maxT * 110));
     tr.innerHTML = `<td>${e.ts}</td><td><span class="mode-pill">${e.mode||"?"}</span></td>` +
       `<td>${e.label}</td><td${fast}><span class="bar" style="width:${w}px"></span>${e.ttft.toFixed(3)}s</td>` +
-      `<td style="text-align:center;">${dec > 0.01 ? dec.toFixed(2) + "s" : "—"}</td>` +
+      `<td>${dec > 0.01 ? `<span class="bar dbar" style="width:${dw}px"></span>${dec.toFixed(2)}s` : "—"}</td>` +
       `<td style="text-align:center;">${e.total.toFixed(3)}s</td>`;
     tb.appendChild(tr);
   });
