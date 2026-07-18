@@ -247,6 +247,24 @@ const $ = s => document.querySelector(s);
 let busy = false, clockTimer = null, seenLog = 0;
 let lastStats = null, lastMode = null, lastRes = null;
 
+function timingBar(ttft, total, wall, tokens){
+  const decode = Math.max(0, total - ttft);
+  const net = Math.max(0, wall - total);
+  const w = x => Math.max(1.5, x / wall * 100).toFixed(1) + "%";
+  const tps = decode > 0.05 && tokens > 1 ? ` @ ${((tokens-1)/decode).toFixed(0)} tok/s` : "";
+  return `<div style="margin-top:6px;">
+    <div style="display:flex; height:10px; border:1px solid var(--line); background:var(--card2); overflow:hidden;">
+      <div style="width:${w(ttft)}; background:var(--cyan);"></div>
+      <div style="width:${w(decode)}; background:var(--teal);"></div>
+      <div style="width:${w(net)}; background:#3a4a63;"></div>
+    </div>
+    <div style="font-size:10px; color:var(--ink3); margin-top:3px;">
+      <span style="color:var(--cyan);">■</span> TTFT ${ttft.toFixed(3)}s (${(ttft/wall*100).toFixed(0)}%) — what caching attacks &nbsp;
+      <span style="color:var(--teal);">■</span> decode ${decode.toFixed(2)}s (${tokens} tok${tps}) — untouched by caching &nbsp;
+      <span style="color:#7e8fa4;">■</span> network+overhead ${net.toFixed(2)}s
+    </div></div>`;
+}
+
 function setClock(sec, cls){
   const c = $("#clock");
   c.className = cls || "";
@@ -413,8 +431,8 @@ document.querySelectorAll(".askbtn[data-doc]").forEach(b => b.onclick = async ()
     else{
       setClock(r.ttft, "done");
       const wall = ((performance.now()-t0)/1000).toFixed(2);
-      $("#clockmeta").innerHTML = `<b>server TTFT ${r.ttft.toFixed(3)}s</b> · total ${r.total.toFixed(3)}s · ` +
-        `${r.tokens} tok · ${r.label} · ${r.mode} · wall ${wall}s` +
+      $("#clockmeta").innerHTML = `<b>server TTFT ${r.ttft.toFixed(3)}s</b> · ${r.label} · ${r.mode}` +
+        timingBar(r.ttft, r.total, +wall, r.tokens) +
         `<span class="ans">“${r.answer}”</span>`;
     }
   }catch(e){
@@ -573,8 +591,8 @@ $("#chatsend").onclick = async () => {
     else{
       setClock(r.ttft, "done");
       const wall = ((performance.now()-t0)/1000).toFixed(2);
-      $("#clockmeta").innerHTML = `<b>server TTFT ${r.ttft.toFixed(3)}s</b> · total ${r.total.toFixed(3)}s · ` +
-        `${r.tokens} tok · ${r.mode} · wall ${wall}s`;
+      $("#clockmeta").innerHTML = `<b>server TTFT ${r.ttft.toFixed(3)}s</b> · your prompt · ${r.mode}` +
+        timingBar(r.ttft, r.total, +wall, r.tokens);
       out.textContent = r.answer;
       out.style.display = "block";
     }
