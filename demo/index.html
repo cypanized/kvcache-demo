@@ -115,6 +115,16 @@
     .r6{grid-template-columns:repeat(3,1fr);}
     .explainers{grid-template-columns:1fr;}
   }
+  /* architecture modal */
+  #archmodal{display:none; position:fixed; inset:0; background:rgba(4,10,22,.88); z-index:50;
+    align-items:center; justify-content:center; padding:20px;}
+  #archmodal.open{display:flex;}
+  #archbox{background:var(--card); border:1px solid var(--cyan); max-width:1240px; width:100%;
+    max-height:94vh; overflow-y:auto; padding:14px 18px;}
+  #archbox h2{font-size:13px; letter-spacing:.14em; text-transform:uppercase; color:var(--cyan);
+    margin:0 0 4px; font-weight:700; display:flex; justify-content:space-between; align-items:center;}
+  #archbox .cap{font-size:11.5px; color:var(--ink2); margin-top:8px; line-height:1.55;}
+  #archbox .cap b{color:var(--ink);}
 </style>
 </head>
 <body>
@@ -128,6 +138,7 @@
     <div style="display:flex; flex-direction:column; align-items:flex-end; gap:3px;">
       <span id="status"><span class="dot" id="statusdot"></span><span id="statustext">connecting…</span></span>
       <span style="font-size:9.5px; color:var(--ink3); letter-spacing:.08em;">demo by Wong Tran</span>
+      <button id="archbtn" style="padding:3px 10px; font-size:10.5px;">🗺 Architecture</button>
     </div>
   </div>
 
@@ -255,6 +266,116 @@
       to the audit — after a CPU clear it reads empty while the pool still serves (~0.35s + a "Retrieved" log line
       proves it). The storage gauge models true pool membership.</p>
     </details>
+  </div>
+</div>
+
+
+<div id="archmodal">
+  <div id="archbox">
+    <h2>How the pieces fit together — live on this node
+      <button onclick="document.getElementById('archmodal').classList.remove('open')">close ✕</button></h2>
+    <svg viewBox="0 0 1180 664" width="100%" role="img" style="display:block;">
+      <defs><marker id="ar" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+        <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round"/></marker></defs>
+
+      <!-- your machine -->
+      <rect x="14" y="26" width="180" height="270" fill="none" stroke="var(--line)" stroke-dasharray="5 4"/>
+      <text x="24" y="46" fill="var(--ink3)" font-size="10" letter-spacing="2">YOUR MACHINE</text>
+      <rect x="30" y="62" width="150" height="58" fill="var(--card2)" stroke="var(--line)"/>
+      <text x="105" y="86" fill="var(--ink)" font-size="12" font-weight="700" text-anchor="middle">Browser</text>
+      <text x="105" y="103" fill="var(--ink3)" font-size="10" text-anchor="middle">this dashboard UI</text>
+      <rect x="30" y="170" width="150" height="58" fill="var(--card2)" stroke="var(--line)"/>
+      <text x="105" y="194" fill="var(--ink)" font-size="12" font-weight="700" text-anchor="middle">SSH tunnel</text>
+      <text x="105" y="211" fill="var(--ink3)" font-size="10" text-anchor="middle">:7811 → node :7811</text>
+      <line x1="105" y1="120" x2="105" y2="164" stroke="var(--cyan)" marker-end="url(#ar)"/>
+
+      <!-- gpu node -->
+      <rect x="222" y="12" width="944" height="640" fill="none" stroke="var(--cyan)" stroke-opacity=".5"/>
+      <text x="236" y="34" fill="var(--cyan)" font-size="11" letter-spacing="2" font-weight="700">GPU NODE · VAST.AI · A100 80GB</text>
+
+      <!-- dashboard server -->
+      <rect x="248" y="56" width="240" height="104" fill="var(--card2)" stroke="var(--line)"/>
+      <text x="368" y="78" fill="var(--ink)" font-size="12" font-weight="700" text-anchor="middle">onbox_server.py · :7811</text>
+      <text x="368" y="96" fill="var(--ink3)" font-size="10" text-anchor="middle">serves this page · residency gauges</text>
+      <text x="368" y="111" fill="var(--ink3)" font-size="10" text-anchor="middle">buttons → probes &amp; clears</text>
+      <text x="368" y="126" fill="var(--ink3)" font-size="10" text-anchor="middle">evidence terminal (read-only cmds)</text>
+      <line x1="180" y1="199" x2="242" y2="199" stroke="var(--cyan)" marker-end="url(#ar)"/>
+      <line x1="368" y1="160" x2="368" y2="196" stroke="var(--ink3)" marker-end="url(#ar)"/>
+
+      <!-- helper scripts -->
+      <rect x="248" y="200" width="240" height="92" fill="var(--card2)" stroke="var(--line)"/>
+      <text x="368" y="221" fill="var(--ink)" font-size="11" font-weight="700" text-anchor="middle">on-box probes</text>
+      <text x="368" y="238" fill="var(--ink3)" font-size="10" text-anchor="middle">ask.py — server-side TTFT</text>
+      <text x="368" y="253" fill="var(--ink3)" font-size="10" text-anchor="middle">evidence_lookup.py — index audit</text>
+      <text x="368" y="268" fill="var(--ink3)" font-size="10" text-anchor="middle">switch.sh — detached mode restart</text>
+      <line x1="488" y1="246" x2="546" y2="246" stroke="var(--ink3)" marker-end="url(#ar)"/>
+      <text x="517" y="238" fill="var(--ink3)" font-size="9" text-anchor="middle">HTTP :8000</text>
+
+      <!-- vLLM -->
+      <rect x="552" y="56" width="596" height="250" fill="none" stroke="var(--ink2)"/>
+      <text x="566" y="78" fill="var(--ink)" font-size="12" font-weight="700">vLLM server · :8000</text>
+      <text x="566" y="94" fill="var(--ink3)" font-size="9.5">PYTHONHASHSEED=0 · dev endpoints (reset_prefix_cache) · /tokenize</text>
+      <rect x="566" y="106" width="176" height="76" fill="var(--card2)" stroke="var(--line)"/>
+      <text x="654" y="130" fill="var(--ink)" font-size="11" font-weight="700" text-anchor="middle">scheduler + model</text>
+      <text x="654" y="147" fill="var(--ink3)" font-size="10" text-anchor="middle">Qwen2.5-14B · prefill/decode</text>
+      <text x="654" y="162" fill="var(--ink3)" font-size="10" text-anchor="middle">decode ≈ 35 tok/s</text>
+      <rect x="762" y="106" width="176" height="76" fill="#0e2f45" stroke="var(--cyan)"/>
+      <text x="850" y="130" fill="var(--cyan)" font-size="11" font-weight="700" text-anchor="middle">TIER 0 · GPU paged KV</text>
+      <text x="850" y="147" fill="var(--ink)" font-size="10" text-anchor="middle">47 GB · ~24 docs · LRU</text>
+      <text x="850" y="162" fill="var(--ink3)" font-size="10" text-anchor="middle">hit ≈ 0.07 s</text>
+      <rect x="958" y="106" width="176" height="76" fill="var(--card2)" stroke="var(--line)"/>
+      <text x="1046" y="130" fill="var(--ink)" font-size="11" font-weight="700" text-anchor="middle">LMCacheConnectorV1</text>
+      <text x="1046" y="147" fill="var(--ink3)" font-size="10" text-anchor="middle">--kv-transfer-config hook</text>
+      <text x="1046" y="162" fill="var(--ink3)" font-size="10" text-anchor="middle">save ↓ · load ↑</text>
+      <line x1="742" y1="144" x2="756" y2="144" stroke="var(--ink3)" marker-end="url(#ar)"/>
+      <line x1="938" y1="144" x2="952" y2="144" stroke="var(--ink3)" marker-end="url(#ar)"/>
+      <rect x="566" y="208" width="568" height="80" fill="var(--card2)" stroke="var(--line)"/>
+      <text x="850" y="231" fill="var(--ink)" font-size="11" font-weight="700" text-anchor="middle">LMCache engine (in the vLLM process)</text>
+      <text x="850" y="249" fill="var(--ink3)" font-size="10" text-anchor="middle">256-token chunks · content-hash keys · storage manager</text>
+      <text x="850" y="265" fill="var(--ink3)" font-size="10" text-anchor="middle">write-through to every tier · per-tier LRU · async writes (~6% cold overhead)</text>
+      <line x1="1046" y1="182" x2="1046" y2="202" stroke="var(--teal)" marker-end="url(#ar)"/>
+
+      <!-- tiers below -->
+      <rect x="566" y="356" width="270" height="92" fill="#0e2f45" stroke="var(--cyan)"/>
+      <text x="701" y="380" fill="var(--cyan)" font-size="11" font-weight="700" text-anchor="middle">TIER 1 · LocalCPUBackend</text>
+      <text x="701" y="398" fill="var(--ink)" font-size="10" text-anchor="middle">60 GB pinned host RAM · ~30 docs</text>
+      <text x="701" y="414" fill="var(--ink3)" font-size="10" text-anchor="middle">hit ≈ 0.17 s · 24 GB/s to GPU</text>
+      <text x="701" y="430" fill="var(--ink3)" font-size="9.5" text-anchor="middle">controller /clear ✓ · registry ✓</text>
+      <line x1="701" y1="288" x2="701" y2="350" stroke="var(--teal)" marker-end="url(#ar)"/>
+
+      <rect x="864" y="356" width="270" height="92" fill="var(--card2)" stroke="var(--line)"/>
+      <text x="999" y="380" fill="var(--ink)" font-size="11" font-weight="700" text-anchor="middle">NixlStorageBackend</text>
+      <text x="999" y="398" fill="var(--ink3)" font-size="10" text-anchor="middle">NVIDIA NIXL agent · POSIX plugin</text>
+      <text x="999" y="414" fill="var(--ink3)" font-size="10" text-anchor="middle">CPU staging buffer · batched descriptors</text>
+      <text x="999" y="430" fill="var(--amber)" font-size="9.5" text-anchor="middle">0.5.1 gaps: clear() patched · registry blind</text>
+      <line x1="999" y1="288" x2="999" y2="350" stroke="var(--teal)" marker-end="url(#ar)"/>
+
+      <rect x="864" y="496" width="270" height="92" fill="#0e2f45" stroke="var(--cyan)"/>
+      <text x="999" y="520" fill="var(--cyan)" font-size="11" font-weight="700" text-anchor="middle">TIER 2 · NIXL pool → NVMe</text>
+      <text x="999" y="538" fill="var(--ink)" font-size="10" text-anchor="middle">/root/lmcache_nixl · 1,700 × 48 MiB = 85.6 GB</text>
+      <text x="999" y="554" fill="var(--ink3)" font-size="10" text-anchor="middle">hit ≈ 0.35 s · ~5 GB/s off disk</text>
+      <text x="999" y="570" fill="var(--ink3)" font-size="9.5" text-anchor="middle">in production: a VAST NFS / GDS mount</text>
+      <line x1="999" y1="448" x2="999" y2="490" stroke="var(--teal)" marker-end="url(#ar)"/>
+
+      <!-- controller -->
+      <rect x="248" y="496" width="300" height="104" fill="var(--card2)" stroke="var(--line)"/>
+      <text x="398" y="519" fill="var(--ink)" font-size="12" font-weight="700" text-anchor="middle">LMCache controller · :9050</text>
+      <text x="398" y="537" fill="var(--ink3)" font-size="10" text-anchor="middle">/clear per tier (dropped-token receipts)</text>
+      <text x="398" y="552" fill="var(--ink3)" font-size="10" text-anchor="middle">/lookup — which tier holds these tokens</text>
+      <text x="398" y="567" fill="var(--ink3)" font-size="10" text-anchor="middle">worker channel :8300 / :8400 / :8500</text>
+      <line x1="368" y1="292" x2="368" y2="490" stroke="var(--ink3)" stroke-dasharray="4 3" marker-end="url(#ar)"/>
+      <text x="358" y="400" fill="var(--ink3)" font-size="9" text-anchor="end">clear · lookup</text>
+      <line x1="548" y1="520" x2="700" y2="454" stroke="var(--ink3)" stroke-dasharray="4 3" marker-end="url(#ar)"/>
+    </svg>
+    <div class="cap">
+      <b>Request path:</b> a button click travels browser → tunnel → dashboard server → ask.py → vLLM. TTFT is measured
+      on-box, so your network never contaminates the numbers.
+      <b>KV path:</b> prefill computes KV into Tier 0; the connector hands it to LMCache, which write-throughs every tier
+      (teal arrows). Retrieval climbs from the fastest tier that still holds the chunks — 0.07s GPU, 0.17s RAM, 0.35s NVMe,
+      1.8s if nothing does.
+      <b>Admin path (dashed):</b> the controller performs pure per-tier eviction and the /lookup audit; the dashboard's
+      evidence terminal runs read-only commands and this audit on every tier-card click.
+    </div>
   </div>
 </div>
 
@@ -628,6 +749,10 @@ $("#clearlog").onclick = async () => {
   await fetch("/api/clear", {method:"POST", headers:{"Content-Type":"application/json"}, body:"{}"});
   status();
 };
+
+$("#archbtn").onclick = () => document.getElementById("archmodal").classList.add("open");
+document.getElementById("archmodal").onclick = e => { if (e.target.id === "archmodal") e.target.classList.remove("open"); };
+document.addEventListener("keydown", e => { if (e.key === "Escape") document.getElementById("archmodal").classList.remove("open"); });
 
 status();
 stats();
