@@ -55,10 +55,10 @@
   /* ---- workbench console ---- */
   .workbench{display:grid; grid-template-columns:minmax(0,1.12fr) minmax(0,1fr);
     border:1px solid var(--line); background:var(--card); margin-top:12px;}
-  .wb-left{padding:14px 16px; display:flex; flex-direction:column; gap:12px; min-width:0;}
+  .wb-left{padding:14px 26px 14px 10px; display:flex; flex-direction:column; gap:12px; min-width:0;}
   .wb-right{border-left:1px solid var(--line); padding:14px 16px; display:flex; flex-direction:column;
     gap:8px; min-width:0; background:#0d1b31;}
-  .wb-row{display:grid; grid-template-columns:64px minmax(0,1fr); gap:10px; align-items:start;}
+  .wb-row{display:grid; grid-template-columns:52px minmax(0,1fr); gap:8px; align-items:start;}
   .wb-lbl{font-size:9.5px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink3);
     font-weight:700; padding-top:9px; text-align:right;}
   .btnrow{display:grid; gap:6px;}
@@ -202,7 +202,7 @@
       <div class="loghead">Results <button id="clearlog">Clear</button></div>
       <div class="logscroll">
         <table>
-          <thead><tr><th>Time</th><th>Mode</th><th>Request</th><th style="width:32%; text-align:center;">TTFT (per request)</th><th style="text-align:center;">Decode</th><th style="text-align:center;">Total</th></tr></thead>
+          <thead><tr><th>Time</th><th>Mode</th><th>Request</th><th style="width:32%;">TTFT (per request)</th><th style="text-align:center;">Decode</th><th style="text-align:center;">Total</th></tr></thead>
           <tbody id="log"><tr><td colspan="6" style="color:var(--ink3)">No requests yet.</td></tr></tbody>
         </table>
       </div>
@@ -408,7 +408,7 @@ function renderLog(log){
     const fast = e.ttft < 0.8 ? " class=fast" : "";
     const dec = e.total - e.ttft;
     tr.innerHTML = `<td>${e.ts}</td><td><span class="mode-pill">${e.mode||"?"}</span></td>` +
-      `<td>${e.label}</td><td${fast} style="text-align:center;"><span class="bar" style="width:${w}px"></span>${e.ttft.toFixed(3)}s</td>` +
+      `<td>${e.label}</td><td${fast}><span class="bar" style="width:${w}px"></span>${e.ttft.toFixed(3)}s</td>` +
       `<td style="text-align:center;">${dec > 0.01 ? dec.toFixed(2) + "s" : "—"}</td>` +
       `<td style="text-align:center;">${e.total.toFixed(3)}s</td>`;
     tb.appendChild(tr);
