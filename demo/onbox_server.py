@@ -273,6 +273,38 @@ def start_spill():
     return True
 
 
+def read_cgroup_mem():
+    base = "/sys/fs/cgroup"
+    try:  # cgroup v2
+        cur = int(open(f"{base}/memory.current").read())
+        mx_raw = open(f"{base}/memory.max").read().strip()
+        mx = 0 if mx_raw == "max" else int(mx_raw)
+        anon = filec = 0
+        for line in open(f"{base}/memory.stat"):
+            k, v = line.split()
+            if k == "anon":
+                anon = int(v)
+            elif k == "file":
+                filec = int(v)
+    except FileNotFoundError:  # cgroup v1
+        m = f"{base}/memory"
+        cur = int(open(f"{m}/memory.usage_in_bytes").read())
+        mx = int(open(f"{m}/memory.limit_in_bytes").read())
+        anon = filec = 0
+        for line in open(f"{m}/memory.stat"):
+            k, v = line.split()
+            if k == "total_rss":
+                anon = int(v)
+            elif k == "total_cache":
+                filec = int(v)
+    if mx <= 0 or mx > 1 << 58:  # "unlimited" — use host MemTotal
+        for line in open("/proc/meminfo"):
+            if line.startswith("MemTotal"):
+                mx = int(line.split()[1]) * 1024
+                break
+    return cur, mx, anon, filec
+
+
 _stats_cache = {"t": 0, "data": None}
 
 
@@ -283,15 +315,7 @@ def gather_stats():
         smi = subprocess.run(["nvidia-smi", "--query-gpu=memory.used,memory.total",
                               "--format=csv,noheader,nounits"], capture_output=True, text=True, timeout=10)
         gpu_used, gpu_total = [int(x) for x in smi.stdout.strip().split(",")]
-        ram_cur = int(open("/sys/fs/cgroup/memory.current").read())
-        ram_max = int(open("/sys/fs/cgroup/memory.max").read())
-        ram_anon = ram_file = 0
-        for line in open("/sys/fs/cgroup/memory.stat"):
-            k, v = line.split()
-            if k == "anon":
-                ram_anon = int(v)
-            elif k == "file":
-                ram_file = int(v)
+        ram_cur, ram_max, ram_anon, ram_file = read_cgroup_mem()
         st = os.statvfs("/root")
         disk_avail, disk_size = st.f_bavail * st.f_frsize, st.f_blocks * st.f_frsize
 
