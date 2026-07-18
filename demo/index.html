@@ -222,6 +222,11 @@
       doc buttons &amp; sweeps generate max <b>32 tokens</b> (~0.8s), your own prompts max <b>256 tokens</b>
       (~7s), the NVMe proof 16. Caching only accelerates TTFT (reading the prompt); decode runs at the model's
       fixed ~35 tok/s regardless — the timing bar under each result shows the split.</p>
+      <p><b>Why identical prompts give identical answers:</b> all probes (including your own prompts) run at
+      <b>temperature 0</b> — greedy decoding, no sampling — so results are reproducible and comparisons are
+      apples-to-apples. The chat variation you see in real assistants comes from temperature sampling (~0.7).
+      Bonus proof this protects: KV caching <i>never changes outputs</i> — a cached answer is character-identical
+      to the recomputed one; only the TTFT differs.</p>
     </details>
     <details>
       <summary>Suggested experiment (you drive every step)</summary>
