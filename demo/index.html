@@ -202,8 +202,8 @@
       <div class="loghead">Results <button id="clearlog">Clear</button></div>
       <div class="logscroll">
         <table>
-          <thead><tr><th>Time</th><th>Mode</th><th>Request</th><th style="width:38%">TTFT (per request)</th><th>Total</th></tr></thead>
-          <tbody id="log"><tr><td colspan="5" style="color:var(--ink3)">No requests yet.</td></tr></tbody>
+          <thead><tr><th>Time</th><th>Mode</th><th>Request</th><th style="width:32%; text-align:center;">TTFT (per request)</th><th style="text-align:center;">Decode</th><th style="text-align:center;">Total</th></tr></thead>
+          <tbody id="log"><tr><td colspan="6" style="color:var(--ink3)">No requests yet.</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -398,7 +398,7 @@ function renderLog(log){
   const tb = $("#log");
   tb.innerHTML = "";
   if (!log.length){
-    tb.innerHTML = '<tr><td colspan="5" style="color:var(--ink3)">No requests yet.</td></tr>';
+    tb.innerHTML = '<tr><td colspan="6" style="color:var(--ink3)">No requests yet.</td></tr>';
     return;
   }
   const maxT = Math.max(...log.map(e => e.ttft), 0.001);
@@ -406,9 +406,11 @@ function renderLog(log){
     const tr = document.createElement("tr");
     const w = Math.max(2, Math.round(e.ttft / maxT * 110));
     const fast = e.ttft < 0.8 ? " class=fast" : "";
+    const dec = e.total - e.ttft;
     tr.innerHTML = `<td>${e.ts}</td><td><span class="mode-pill">${e.mode||"?"}</span></td>` +
-      `<td>${e.label}</td><td${fast}><span class="bar" style="width:${w}px"></span>${e.ttft.toFixed(3)}s</td>` +
-      `<td>${e.total.toFixed(3)}s</td>`;
+      `<td>${e.label}</td><td${fast} style="text-align:center;"><span class="bar" style="width:${w}px"></span>${e.ttft.toFixed(3)}s</td>` +
+      `<td style="text-align:center;">${dec > 0.01 ? dec.toFixed(2) + "s" : "—"}</td>` +
+      `<td style="text-align:center;">${e.total.toFixed(3)}s</td>`;
     tb.appendChild(tr);
   });
 }
