@@ -123,9 +123,14 @@
     .wrap{height:100vh; display:flex; flex-direction:column;}
     .workbench{flex:1; min-height:0;}
     .wb-left{overflow-y:auto;}
-    .wb-right{min-height:0;}
+    .wb-right{min-height:0; overflow:hidden;}
     .logscroll{max-height:none;}
   }
+  /* an open explainer note unlocks the page so it can grow and scroll normally */
+  body.noteopen{height:auto; overflow:auto;}
+  body.noteopen .wrap{height:auto; display:block;}
+  body.noteopen .wb-right{overflow:visible;}
+  body.noteopen .logscroll{max-height:420px;}
   /* architecture modal */
   #archmodal{display:none; position:fixed; inset:0; background:rgba(4,10,22,.88); z-index:50;
     align-items:center; justify-content:center; padding:20px;}
@@ -762,6 +767,12 @@ $("#clearlog").onclick = async () => {
   await fetch("/api/clear", {method:"POST", headers:{"Content-Type":"application/json"}, body:"{}"});
   status();
 };
+
+/* explainer notes: unlock the viewport-locked layout while any note is open */
+document.querySelectorAll("details").forEach(d => d.addEventListener("toggle", () => {
+  document.body.classList.toggle("noteopen", !!document.querySelector("details[open]"));
+  if (d.open) d.scrollIntoView({behavior:"smooth", block:"nearest"});
+}));
 
 $("#archbtn").onclick = () => document.getElementById("archmodal").classList.add("open");
 document.getElementById("archmodal").onclick = e => { if (e.target.id === "archmodal") e.target.classList.remove("open"); };
