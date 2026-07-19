@@ -79,9 +79,10 @@
   #chatbox{flex:1; background:var(--card2); color:var(--ink); border:1px solid var(--line);
     padding:9px 10px; font-family:inherit; font-size:12px; resize:none; height:100%; min-height:0;}
   #chatsend{display:flex; align-items:center; justify-content:center; height:100%;}
-  #chatout{display:none; border:1px solid var(--line); border-left:2px solid var(--teal);
+  #chatout{border:1px solid var(--line); border-left:2px solid var(--teal);
     padding:8px 12px; font-size:11.5px; color:var(--ink2); white-space:pre-wrap;
-    max-height:110px; overflow-y:auto; background:var(--card2);}
+    height:110px; overflow-y:auto; background:var(--card2);}
+  #chatout.empty{color:var(--ink3); font-style:italic;}
   /* right monitor */
   #clock{font-size:44px; font-weight:800; font-variant-numeric:tabular-nums;
     font-family:"SF Mono",Consolas,Menlo,monospace; letter-spacing:-1px; line-height:1.05; color:var(--ink);}
@@ -212,7 +213,7 @@
             <textarea id="chatbox" placeholder="Paste your own prompt (256-token reply) — send twice to see caching…"></textarea>
             <button id="chatsend" style="min-width:84px;"><span class="bt">Send ➤</span></button>
           </div>
-          <div id="chatout" style="margin-top:6px;"></div>
+          <div id="chatout" class="empty" style="margin-top:6px;">Model reply appears here after you send a prompt.</div>
         </div>
       </div>
     </div>
@@ -732,7 +733,8 @@ $("#chatsend").onclick = async () => {
   clockTimer = setInterval(() => setClock((performance.now()-t0)/1000, "running"), 33);
   $("#clockmeta").innerHTML = "Running your prompt… final number is server-side TTFT.";
   const out = $("#chatout");
-  out.style.display = "none";
+  out.classList.add("empty");
+  out.textContent = "…generating";
   try{
     const r = await (await fetch("/api/chat", {method:"POST",
       headers:{"Content-Type":"application/json"}, body: JSON.stringify({prompt})})).json();
@@ -743,13 +745,14 @@ $("#chatsend").onclick = async () => {
       const wall = ((performance.now()-t0)/1000).toFixed(2);
       $("#clockmeta").innerHTML = `<b>server TTFT ${r.ttft.toFixed(3)}s</b> · your prompt · ${r.mode}` +
         timingBar(r.ttft, r.total, +wall, r.tokens);
+      out.classList.remove("empty");
       out.textContent = r.answer;
-      out.style.display = "block";
     }
   }catch(e){
     clearInterval(clockTimer); setClock(0, "");
     $("#clockmeta").innerHTML = `<b style="color:var(--red)">request failed: ${e}</b>`;
   }
+  if (out.textContent === "…generating") out.textContent = "Model reply appears here after you send a prompt.";
   $("#chatsend").disabled = false;
   busy = false; status();
 };
