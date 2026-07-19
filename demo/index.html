@@ -93,7 +93,7 @@
   .loghead{display:flex; align-items:center; gap:8px; font-size:9.5px; letter-spacing:.14em;
     text-transform:uppercase; color:var(--ink3); font-weight:700;}
   .loghead button{padding:1px 8px; font-size:9.5px;}
-  .logscroll{height:480px; overflow-y:auto;
+  .logscroll{flex:1; min-height:120px; max-height:420px; overflow-y:auto;
     border:1px solid var(--line); background:var(--card);}
   .logscroll table{border-collapse:collapse; width:100%; font-size:11px;}
   .logscroll th{font-size:8.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink3);
@@ -114,6 +114,16 @@
     .wb-right{border-left:none; border-top:1px solid var(--line);}
     .r6{grid-template-columns:repeat(3,1fr);}
     .explainers{grid-template-columns:1fr;}
+    .logscroll{flex:none; height:360px;}
+  }
+  /* wide screens: lock the page to the viewport; the results log absorbs the slack */
+  @media (min-width:1101px) and (min-height:760px){
+    body{height:100vh; overflow:hidden;}
+    .wrap{height:100vh; display:flex; flex-direction:column;}
+    .workbench{flex:1; min-height:0;}
+    .wb-left{overflow-y:auto;}
+    .wb-right{min-height:0;}
+    .logscroll{max-height:none;}
   }
   /* architecture modal */
   #archmodal{display:none; position:fixed; inset:0; background:rgba(4,10,22,.88); z-index:50;
