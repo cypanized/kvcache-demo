@@ -81,7 +81,8 @@
   #chatsend{display:flex; align-items:center; justify-content:center; height:100%;}
   #chatout{border:1px solid var(--line); border-left:2px solid var(--teal);
     padding:8px 12px; font-size:11.5px; color:var(--ink2); white-space:pre-wrap;
-    height:110px; overflow-y:auto; background:var(--card2);}
+    flex:1; min-height:110px; overflow-y:auto; background:var(--card2);}
+  .wb-left .wb-row:last-child{flex:1; min-height:0;}
   #chatout.empty{color:var(--ink3); font-style:italic;}
   /* right monitor */
   #clock{font-size:44px; font-weight:800; font-variant-numeric:tabular-nums;
@@ -213,7 +214,7 @@
         </div>
       </div>
       <div class="wb-row"><div class="wb-lbl">Prompt</div>
-        <div style="min-width:0;">
+        <div style="min-width:0; flex:1; min-height:0; display:flex; flex-direction:column;">
           <div class="chatrow">
             <textarea id="chatbox" placeholder="Paste your own prompt (256-token reply) — send twice to see caching…"></textarea>
             <button id="chatsend" style="min-width:84px;"><span class="bt">Send ➤</span></button>
